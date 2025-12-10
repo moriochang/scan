@@ -397,7 +397,7 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 照片已按選擇順序排列，第一張底部 10% 已自動遮蔽
+            📋 第1張底部遮蔽 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
         </div>
 
         <div class="controls" id="controls">
@@ -437,6 +437,7 @@
         let images = [];
         let processedImages = [];
         let detectedFilename = '';
+        let serialNumbers = []; // 儲存每張圖片辨識到的序號
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -454,7 +455,6 @@
         const contrastValue = document.getElementById('contrastValue');
         const brightnessValue = document.getElementById('brightnessValue');
 
-        // 檢測是否為 iOS
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
         fileInput.addEventListener('change', handleFileSelect);
@@ -468,10 +468,14 @@
 
             images = [];
             processedImages = [];
+            serialNumbers = [];
             
             for (const file of files) {
                 await loadImage(file);
             }
+            
+            // 先辨識所有圖片的序號
+            await detectAllSerialNumbers();
             
             processAllImages();
             updateStats();
@@ -500,6 +504,82 @@
                 };
                 reader.readAsDataURL(file);
             });
+        }
+
+        async function detectAllSerialNumbers() {
+            console.log('開始辨識所有圖片的序號...');
+            
+            for (let i = 0; i < images.length; i++) {
+                const serialNumber = await detectSerialNumber(images[i], i);
+                serialNumbers.push(serialNumber);
+            }
+            
+            console.log('辨識完成，序號列表:', serialNumbers);
+        }
+
+        async function detectSerialNumber(img, index) {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 擷取中間區域進行 OCR (iPad 序號通常在中央)
+                const cropWidth = Math.floor(img.width * 0.6);
+                const cropHeight = Math.floor(img.height * 0.3);
+                const cropX = Math.floor(img.width * 0.2);
+                const cropY = Math.floor(img.height * 0.35);
+                
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                
+                ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                // 增強對比度
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    gray = ((gray - 128) * 1.8) + 128;
+                    gray = Math.max(0, Math.min(255, gray));
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                
+                const result = await Tesseract.recognize(canvas, 'eng', { logger: () => {} });
+                const text = result.data.text.replace(/\s/g, '');
+                
+                console.log(`圖片 ${index + 1} OCR 結果:`, text);
+                
+                // 匹配 iPad 序號格式: 10位英數字 (例如: H61JJJCWMV)
+                const serialPattern = /[A-Z0-9]{10}/gi;
+                const matches = text.match(serialPattern);
+                
+                if (matches && matches.length > 0) {
+                    // 過濾掉可能不是序號的結果（例如全數字）
+                    const validSerial = matches.find(match => 
+                        /[A-Z]/.test(match) && /[0-9]/.test(match)
+                    );
+                    
+                    if (validSerial) {
+                        console.log(`✓ 圖片 ${index + 1} 找到序號:`, validSerial);
+                        return {
+                            text: validSerial,
+                            x: cropX,
+                            y: cropY,
+                            width: cropWidth,
+                            height: cropHeight
+                        };
+                    }
+                }
+                
+                console.log(`✗ 圖片 ${index + 1} 未找到序號`);
+                return null;
+                
+            } catch (error) {
+                console.error(`圖片 ${index + 1} 序號辨識失敗:`, error);
+                return null;
+            }
         }
 
         async function performOCR() {
@@ -550,7 +630,7 @@
                 );
                 
                 const text = result.data.text.replace(/\s/g, '');
-                console.log('OCR 原始結果:', text);
+                console.log('發票 OCR 原始結果:', text);
                 
                 const patterns = [
                     /[A-Z]{2}-?\d{8}/gi,
@@ -628,13 +708,30 @@
             
             ctx.putImageData(imageData, 0, 0);
             
-            // 如果是第一張圖片，用白色遮蔽底部 10%
+            // 第一張圖片：用白色遮蔽底部 10%
             if (index === 0) {
                 const maskHeight = Math.floor(canvas.height * 0.1);
                 const maskY = canvas.height - maskHeight;
                 
                 ctx.fillStyle = 'white';
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
+            }
+            
+            // 第四張圖片：遮蔽 iPad 序號
+            if (index === 3 && serialNumbers[index]) {
+                const serial = serialNumbers[index];
+                
+                // 在序號區域繪製白色遮罩
+                const maskPadding = 20; // 額外的遮蔽範圍
+                ctx.fillStyle = 'white';
+                ctx.fillRect(
+                    Math.max(0, serial.x - maskPadding),
+                    Math.max(0, serial.y - maskPadding),
+                    serial.width + maskPadding * 2,
+                    serial.height + maskPadding * 2
+                );
+                
+                console.log(`✓ 第4張已遮蔽序號: ${serial.text}`);
             }
             
             return canvas.toDataURL('image/jpeg', 0.9);
@@ -646,7 +743,12 @@
                 const div = document.createElement('div');
                 div.className = 'preview-item';
                 
-                const maskBadge = index === 0 ? '<div class="mask-badge">✓ 底部已遮蔽</div>' : '';
+                let maskBadge = '';
+                if (index === 0) {
+                    maskBadge = '<div class="mask-badge">✓ 底部已遮蔽</div>';
+                } else if (index === 3 && serialNumbers[index]) {
+                    maskBadge = `<div class="mask-badge">✓ 序號已遮蔽: ${serialNumbers[index].text}</div>`;
+                }
                 
                 div.innerHTML = `
                     <div class="page-number">第 ${index + 1} 頁</div>
@@ -668,8 +770,8 @@
             if (newIndex < 0 || newIndex >= images.length) return;
             
             [images[index], images[newIndex]] = [images[newIndex], images[index]];
+            [serialNumbers[index], serialNumbers[newIndex]] = [serialNumbers[newIndex], serialNumbers[index]];
             
-            // 重新處理圖片（因為第一張需要遮蔽）
             processAllImages();
             updateStats();
         }
@@ -677,8 +779,8 @@
         function deleteImage(index) {
             images.splice(index, 1);
             processedImages.splice(index, 1);
+            serialNumbers.splice(index, 1);
             
-            // 重新處理所有圖片（因為第一張可能改變）
             if (images.length > 0) {
                 processAllImages();
             }
