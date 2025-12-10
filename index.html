@@ -509,7 +509,7 @@
         let detectedFilename = '';
         let serialNumbers = [];
         let serialPosValue = 23.5;
-        let serialHeightValue = 4;
+        let serialHeightValue = 2.5; // 從 4% 調整為 2.5%
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -836,7 +836,7 @@
                                 序號欄位高度
                                 <span class="control-value" id="serialHeightValueDisplay">${serialHeightValue}%</span>
                             </label>
-                            <input type="range" id="serialHeightSlider" min="2" max="8" value="${serialHeightValue}" step="0.5">
+                            <input type="range" id="serialHeightSlider" min="1" max="6" value="${serialHeightValue}" step="0.5">
                         </div>
                     `;
                     div.appendChild(maskControls);
