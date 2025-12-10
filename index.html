@@ -332,6 +332,28 @@
             font-weight: 500;
         }
 
+        .download-tip {
+            background: #3a4a5c;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: none;
+            color: #a0a0a0;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .download-tip.show {
+            display: block;
+        }
+
+        .download-tip strong {
+            color: #e8e8e8;
+            display: block;
+            margin-bottom: 8px;
+        }
+
         @media (max-width: 600px) {
             .preview-grid {
                 grid-template-columns: 1fr;
@@ -390,6 +412,10 @@
                 <span>📥</span>
                 <span>生成 PDF</span>
             </button>
+            <div class="download-tip" id="downloadTip">
+                <strong>💡 iOS 下載提示：</strong>
+                PDF 生成後會自動開啟預覽，請點擊「分享」按鈕 → 「儲存到檔案」來保存 PDF。
+            </div>
         </div>
     </div>
 
@@ -410,10 +436,14 @@
         const stats = document.getElementById('stats');
         const ocrStatus = document.getElementById('ocrStatus');
         const sortHint = document.getElementById('sortHint');
+        const downloadTip = document.getElementById('downloadTip');
         const contrastSlider = document.getElementById('contrast');
         const brightnessSlider = document.getElementById('brightness');
         const contrastValue = document.getElementById('contrastValue');
         const brightnessValue = document.getElementById('brightnessValue');
+
+        // 檢測是否為 iOS
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
         fileInput.addEventListener('change', handleFileSelect);
         contrastSlider.addEventListener('input', updateControls);
@@ -427,7 +457,6 @@
             images = [];
             processedImages = [];
             
-            // 按照選擇順序載入圖片
             for (const file of files) {
                 await loadImage(file);
             }
@@ -439,7 +468,10 @@
             previewSection.style.display = 'block';
             sortHint.classList.add('show');
             
-            // 進行 OCR 辨識
+            if (isIOS) {
+                downloadTip.classList.add('show');
+            }
+            
             await performOCR();
         }
 
@@ -608,7 +640,6 @@
             
             if (newIndex < 0 || newIndex >= images.length) return;
             
-            // 交換圖片位置
             [images[index], images[newIndex]] = [images[newIndex], images[index]];
             [processedImages[index], processedImages[newIndex]] = [processedImages[newIndex], processedImages[index]];
             
@@ -627,6 +658,7 @@
                 controls.style.display = 'none';
                 filenameSection.style.display = 'none';
                 sortHint.classList.remove('show');
+                downloadTip.classList.remove('show');
             }
         }
 
@@ -694,10 +726,31 @@
             let filename = filenameInput.value.trim() || detectedFilename || '掃描文件';
             filename = filename.replace(/[<>:"/\\|?*]/g, '_');
             
-            pdf.save(`${filename}.pdf`);
-            
-            generateBtn.disabled = false;
-            generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
+            // iOS 優化：使用 Blob 並開啟新視窗預覽
+            if (isIOS) {
+                const pdfBlob = pdf.output('blob');
+                const blobUrl = URL.createObjectURL(pdfBlob);
+                
+                // 開啟新視窗顯示 PDF
+                const newWindow = window.open(blobUrl, '_blank');
+                
+                if (!newWindow) {
+                    // 如果無法開啟新視窗，使用下載
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = `${filename}.pdf`;
+                    link.click();
+                    URL.revokeObjectURL(blobUrl);
+                }
+                
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<span>✅</span><span>PDF 已開啟</span>';
+            } else {
+                // 非 iOS 使用標準下載
+                pdf.save(`${filename}.pdf`);
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
+            }
             
             setTimeout(() => {
                 generateBtn.innerHTML = '<span>📥</span><span>生成 PDF</span>';
