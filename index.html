@@ -130,24 +130,6 @@
             margin-left: 10px;
         }
 
-        .mask-controls {
-            background: #3a4a5c;
-            border-radius: 16px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            display: none;
-        }
-
-        .mask-controls .section-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: #e8e8e8;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #4a5a6c;
-        }
-
         .filename-section {
             background: #3a4a5c;
             border-radius: 16px;
@@ -329,6 +311,45 @@
             cursor: not-allowed;
         }
 
+        /* 第一張預覽圖下方的遮蔽控制 */
+        .first-image-mask-controls {
+            background: #2c3844;
+            border-radius: 0 0 12px 12px;
+            padding: 16px;
+            margin-top: -12px;
+            display: none;
+        }
+
+        .first-image-mask-controls.show {
+            display: block;
+        }
+
+        .first-image-mask-controls .mini-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #5fb878;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        .first-image-mask-controls .control-group {
+            margin-bottom: 12px;
+        }
+
+        .first-image-mask-controls .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .first-image-mask-controls .control-group label {
+            font-size: 12px;
+            color: #d0d0d0;
+        }
+
+        .first-image-mask-controls .control-value {
+            font-size: 12px;
+            padding: 2px 8px;
+        }
+
         .generate-btn {
             width: 100%;
             padding: 16px;
@@ -422,24 +443,6 @@
             📋 第1張序號與底部遮蔽 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
         </div>
 
-        <div class="mask-controls" id="maskControls">
-            <div class="section-title">🎯 第一張圖片遮蔽調整</div>
-            <div class="control-group">
-                <label>
-                    序號欄位位置（上下）
-                    <span class="control-value" id="serialPosValue">23.5%</span>
-                </label>
-                <input type="range" id="serialPos" min="15" max="35" value="23.5" step="0.5">
-            </div>
-            <div class="control-group">
-                <label>
-                    序號欄位高度
-                    <span class="control-value" id="serialHeightValue">4%</span>
-                </label>
-                <input type="range" id="serialHeight" min="2" max="8" value="4" step="0.5">
-            </div>
-        </div>
-
         <div class="controls" id="controls">
             <div class="control-group">
                 <label>
@@ -483,7 +486,6 @@
         const previewGrid = document.getElementById('previewGrid');
         const previewSection = document.getElementById('previewSection');
         const controls = document.getElementById('controls');
-        const maskControls = document.getElementById('maskControls');
         const filenameSection = document.getElementById('filenameSection');
         const filenameInput = document.getElementById('filenameInput');
         const generateBtn = document.getElementById('generateBtn');
@@ -496,20 +498,12 @@
         const brightnessSlider = document.getElementById('brightness');
         const contrastValue = document.getElementById('contrastValue');
         const brightnessValue = document.getElementById('brightnessValue');
-        
-        const serialPosSlider = document.getElementById('serialPos');
-        const serialHeightSlider = document.getElementById('serialHeight');
-        const serialPosValue = document.getElementById('serialPosValue');
-        const serialHeightValue = document.getElementById('serialHeightValue');
 
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-        // 重要：綁定事件監聽器
         fileInput.addEventListener('change', handleFileSelect);
         contrastSlider.addEventListener('input', updateImageControls);
         brightnessSlider.addEventListener('input', updateImageControls);
-        serialPosSlider.addEventListener('input', updateMaskControls);
-        serialHeightSlider.addEventListener('input', updateMaskControls);
         generateBtn.addEventListener('click', generatePDF);
 
         async function handleFileSelect(e) {
@@ -531,7 +525,6 @@
             processAllImages();
             updateStats();
             controls.style.display = 'block';
-            maskControls.style.display = 'block';
             filenameSection.style.display = 'block';
             previewSection.style.display = 'block';
             sortHint.classList.add('show');
@@ -566,13 +559,10 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                const serialPosPercent = parseFloat(serialPosSlider.value) / 100;
-                const serialHeightPercent = parseFloat(serialHeightSlider.value) / 100;
-                
                 const cropX = Math.floor(img.width * 0.15);
-                const cropY = Math.floor(img.height * serialPosPercent);
+                const cropY = Math.floor(img.height * 0.235);
                 const cropWidth = Math.floor(img.width * 0.7);
-                const cropHeight = Math.floor(img.height * serialHeightPercent);
+                const cropHeight = Math.floor(img.height * 0.04);
                 
                 canvas.width = cropWidth;
                 canvas.height = cropHeight;
@@ -739,9 +729,11 @@
             ctx.putImageData(imageData, 0, 0);
             
             if (index === 0) {
-                // 讀取滑桿的值
-                const serialPosPercent = parseFloat(serialPosSlider.value) / 100;
-                const serialHeightPercent = parseFloat(serialHeightSlider.value) / 100;
+                const serialPosSlider = document.getElementById('serialPos');
+                const serialHeightSlider = document.getElementById('serialHeight');
+                
+                const serialPosPercent = serialPosSlider ? parseFloat(serialPosSlider.value) / 100 : 0.235;
+                const serialHeightPercent = serialHeightSlider ? parseFloat(serialHeightSlider.value) / 100 : 0.04;
                 
                 const serialX = Math.floor(canvas.width * 0.15);
                 const serialY = Math.floor(canvas.height * serialPosPercent);
@@ -755,7 +747,7 @@
                 const maskY = canvas.height - maskHeight;
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
                 
-                console.log(`✓ 第1張已遮蔽序號欄位 (位置: ${serialPosSlider.value}%, 高度: ${serialHeightSlider.value}%)`);
+                console.log('✓ 第1張已遮蔽序號欄位和底部');
             }
             
             if (index === 3) {
@@ -797,6 +789,53 @@
                     </div>
                     <img src="${dataUrl}" alt="Page ${index + 1}">
                 `;
+                
+                // 如果是第一張圖片，加入遮蔽調整控制
+                if (index === 0) {
+                    const maskControls = document.createElement('div');
+                    maskControls.className = 'first-image-mask-controls show';
+                    maskControls.innerHTML = `
+                        <div class="mini-title">🎯 調整第一張遮蔽位置</div>
+                        <div class="control-group">
+                            <label>
+                                序號欄位位置（上下）
+                                <span class="control-value" id="serialPosValue">23.5%</span>
+                            </label>
+                            <input type="range" id="serialPos" min="15" max="35" value="23.5" step="0.5">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                序號欄位高度
+                                <span class="control-value" id="serialHeightValue">4%</span>
+                            </label>
+                            <input type="range" id="serialHeight" min="2" max="8" value="4" step="0.5">
+                        </div>
+                    `;
+                    div.appendChild(maskControls);
+                    
+                    // 綁定事件
+                    setTimeout(() => {
+                        const serialPosSlider = document.getElementById('serialPos');
+                        const serialHeightSlider = document.getElementById('serialHeight');
+                        const serialPosValue = document.getElementById('serialPosValue');
+                        const serialHeightValue = document.getElementById('serialHeightValue');
+                        
+                        if (serialPosSlider) {
+                            serialPosSlider.addEventListener('input', () => {
+                                serialPosValue.textContent = serialPosSlider.value + '%';
+                                processAllImages();
+                            });
+                        }
+                        
+                        if (serialHeightSlider) {
+                            serialHeightSlider.addEventListener('input', () => {
+                                serialHeightValue.textContent = serialHeightSlider.value + '%';
+                                processAllImages();
+                            });
+                        }
+                    }, 0);
+                }
+                
                 previewGrid.appendChild(div);
             });
         }
@@ -827,7 +866,6 @@
             if (images.length === 0) {
                 previewSection.style.display = 'none';
                 controls.style.display = 'none';
-                maskControls.style.display = 'none';
                 filenameSection.style.display = 'none';
                 sortHint.classList.remove('show');
                 downloadTip.classList.remove('show');
@@ -837,13 +875,6 @@
         function updateImageControls() {
             contrastValue.textContent = contrastSlider.value + '%';
             brightnessValue.textContent = brightnessSlider.value + '%';
-            processAllImages();
-        }
-
-        function updateMaskControls() {
-            serialPosValue.textContent = serialPosSlider.value + '%';
-            serialHeightValue.textContent = serialHeightSlider.value + '%';
-            // 重新處理所有圖片以應用新的遮蔽設定
             processAllImages();
         }
 
