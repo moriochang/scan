@@ -224,8 +224,14 @@
         .preview-item {
             background: #3a4a5c;
             border-radius: 12px;
-            overflow: hidden;
+            overflow: visible;
             box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .preview-item .image-wrapper {
+            border-radius: 12px;
+            overflow: hidden;
             position: relative;
         }
 
@@ -245,6 +251,7 @@
             border-radius: 6px;
             font-size: 12px;
             font-weight: 600;
+            z-index: 10;
         }
 
         .preview-item .mask-badge {
@@ -261,6 +268,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            z-index: 10;
         }
 
         .preview-item .controls-overlay {
@@ -270,6 +278,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            z-index: 10;
         }
 
         .preview-item .move-btn,
@@ -316,20 +325,7 @@
             background: #2c3844;
             border-radius: 0 0 12px 12px;
             padding: 16px;
-            margin-top: -12px;
-            display: none;
-        }
-
-        .first-image-mask-controls.show {
-            display: block;
-        }
-
-        .first-image-mask-controls .mini-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: #5fb878;
-            margin-bottom: 12px;
-            text-align: center;
+            margin-top: 0;
         }
 
         .first-image-mask-controls .control-group {
@@ -341,13 +337,44 @@
         }
 
         .first-image-mask-controls .control-group label {
-            font-size: 12px;
+            font-size: 13px;
             color: #d0d0d0;
         }
 
         .first-image-mask-controls .control-value {
             font-size: 12px;
             padding: 2px 8px;
+        }
+
+        .first-image-mask-controls input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #4a5a6c;
+            outline: none;
+            -webkit-appearance: none;
+            touch-action: none;
+        }
+
+        .first-image-mask-controls input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #7b8a9d;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        .first-image-mask-controls input[type="range"]::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #7b8a9d;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
 
         .generate-btn {
@@ -481,6 +508,8 @@
         let processedImages = [];
         let detectedFilename = '';
         let serialNumbers = [];
+        let serialPosValue = 23.5;
+        let serialHeightValue = 4;
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -560,9 +589,9 @@
                 const ctx = canvas.getContext('2d');
                 
                 const cropX = Math.floor(img.width * 0.15);
-                const cropY = Math.floor(img.height * 0.235);
+                const cropY = Math.floor(img.height * (serialPosValue / 100));
                 const cropWidth = Math.floor(img.width * 0.7);
-                const cropHeight = Math.floor(img.height * 0.04);
+                const cropHeight = Math.floor(img.height * (serialHeightValue / 100));
                 
                 canvas.width = cropWidth;
                 canvas.height = cropHeight;
@@ -729,11 +758,8 @@
             ctx.putImageData(imageData, 0, 0);
             
             if (index === 0) {
-                const serialPosSlider = document.getElementById('serialPos');
-                const serialHeightSlider = document.getElementById('serialHeight');
-                
-                const serialPosPercent = serialPosSlider ? parseFloat(serialPosSlider.value) / 100 : 0.235;
-                const serialHeightPercent = serialHeightSlider ? parseFloat(serialHeightSlider.value) / 100 : 0.04;
+                const serialPosPercent = serialPosValue / 100;
+                const serialHeightPercent = serialHeightValue / 100;
                 
                 const serialX = Math.floor(canvas.width * 0.15);
                 const serialY = Math.floor(canvas.height * serialPosPercent);
@@ -747,7 +773,7 @@
                 const maskY = canvas.height - maskHeight;
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
                 
-                console.log('✓ 第1張已遮蔽序號欄位和底部');
+                console.log(`✓ 第1張已遮蔽序號欄位 (位置: ${serialPosValue}%, 高度: ${serialHeightValue}%)`);
             }
             
             if (index === 3) {
@@ -780,64 +806,70 @@
                 }
                 
                 div.innerHTML = `
-                    <div class="page-number">第 ${index + 1} 頁</div>
-                    ${maskBadge}
-                    <div class="controls-overlay">
-                        <button class="move-btn up" onclick="moveImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
-                        <button class="delete-btn" onclick="deleteImage(${index})">×</button>
-                        <button class="move-btn down" onclick="moveImage(${index}, 1)" ${index === images.length - 1 ? 'disabled' : ''}>↓</button>
+                    <div class="image-wrapper">
+                        <div class="page-number">第 ${index + 1} 頁</div>
+                        ${maskBadge}
+                        <div class="controls-overlay">
+                            <button class="move-btn up" onclick="moveImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
+                            <button class="delete-btn" onclick="deleteImage(${index})">×</button>
+                            <button class="move-btn down" onclick="moveImage(${index}, 1)" ${index === images.length - 1 ? 'disabled' : ''}>↓</button>
+                        </div>
+                        <img src="${dataUrl}" alt="Page ${index + 1}">
                     </div>
-                    <img src="${dataUrl}" alt="Page ${index + 1}">
                 `;
                 
                 // 如果是第一張圖片，加入遮蔽調整控制
                 if (index === 0) {
                     const maskControls = document.createElement('div');
-                    maskControls.className = 'first-image-mask-controls show';
+                    maskControls.className = 'first-image-mask-controls';
+                    maskControls.id = 'maskControls';
                     maskControls.innerHTML = `
-                        <div class="mini-title">🎯 調整第一張遮蔽位置</div>
                         <div class="control-group">
                             <label>
                                 序號欄位位置（上下）
-                                <span class="control-value" id="serialPosValue">23.5%</span>
+                                <span class="control-value" id="serialPosValueDisplay">${serialPosValue}%</span>
                             </label>
-                            <input type="range" id="serialPos" min="15" max="35" value="23.5" step="0.5">
+                            <input type="range" id="serialPosSlider" min="15" max="35" value="${serialPosValue}" step="0.5">
                         </div>
                         <div class="control-group">
                             <label>
                                 序號欄位高度
-                                <span class="control-value" id="serialHeightValue">4%</span>
+                                <span class="control-value" id="serialHeightValueDisplay">${serialHeightValue}%</span>
                             </label>
-                            <input type="range" id="serialHeight" min="2" max="8" value="4" step="0.5">
+                            <input type="range" id="serialHeightSlider" min="2" max="8" value="${serialHeightValue}" step="0.5">
                         </div>
                     `;
                     div.appendChild(maskControls);
-                    
-                    // 綁定事件
-                    setTimeout(() => {
-                        const serialPosSlider = document.getElementById('serialPos');
-                        const serialHeightSlider = document.getElementById('serialHeight');
-                        const serialPosValue = document.getElementById('serialPosValue');
-                        const serialHeightValue = document.getElementById('serialHeightValue');
-                        
-                        if (serialPosSlider) {
-                            serialPosSlider.addEventListener('input', () => {
-                                serialPosValue.textContent = serialPosSlider.value + '%';
-                                processAllImages();
-                            });
-                        }
-                        
-                        if (serialHeightSlider) {
-                            serialHeightSlider.addEventListener('input', () => {
-                                serialHeightValue.textContent = serialHeightSlider.value + '%';
-                                processAllImages();
-                            });
-                        }
-                    }, 0);
                 }
                 
                 previewGrid.appendChild(div);
             });
+            
+            // 綁定滑桿事件（在 DOM 插入後）
+            const serialPosSlider = document.getElementById('serialPosSlider');
+            const serialHeightSlider = document.getElementById('serialHeightSlider');
+            const serialPosValueDisplay = document.getElementById('serialPosValueDisplay');
+            const serialHeightValueDisplay = document.getElementById('serialHeightValueDisplay');
+            
+            if (serialPosSlider) {
+                serialPosSlider.addEventListener('input', (e) => {
+                    serialPosValue = parseFloat(e.target.value);
+                    if (serialPosValueDisplay) {
+                        serialPosValueDisplay.textContent = serialPosValue + '%';
+                    }
+                    processAllImages();
+                });
+            }
+            
+            if (serialHeightSlider) {
+                serialHeightSlider.addEventListener('input', (e) => {
+                    serialHeightValue = parseFloat(e.target.value);
+                    if (serialHeightValueDisplay) {
+                        serialHeightValueDisplay.textContent = serialHeightValue + '%';
+                    }
+                    processAllImages();
+                });
+            }
         }
 
         function moveImage(index, direction) {
