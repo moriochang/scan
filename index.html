@@ -414,7 +414,7 @@
             </button>
             <div class="download-tip" id="downloadTip">
                 <strong>💡 iOS 下載提示：</strong>
-                PDF 生成後會自動開啟預覽，請點擊「分享」按鈕 → 「儲存到檔案」來保存 PDF。
+                點擊「生成 PDF」後，檔案會自動下載。請到 Safari 的「下載項目」(↓) 查看，檔名會是你設定的發票號碼。
             </div>
         </div>
     </div>
@@ -726,27 +726,29 @@
             let filename = filenameInput.value.trim() || detectedFilename || '掃描文件';
             filename = filename.replace(/[<>:"/\\|?*]/g, '_');
             
-            // iOS 優化：使用 Blob 並開啟新視窗預覽
-            if (isIOS) {
+            // 使用標準的下載方式，保留檔名
+            try {
                 const pdfBlob = pdf.output('blob');
-                const blobUrl = URL.createObjectURL(pdfBlob);
+                const url = URL.createObjectURL(pdfBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${filename}.pdf`;
                 
-                // 開啟新視窗顯示 PDF
-                const newWindow = window.open(blobUrl, '_blank');
+                // 觸發下載
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
                 
-                if (!newWindow) {
-                    // 如果無法開啟新視窗，使用下載
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    link.download = `${filename}.pdf`;
-                    link.click();
-                    URL.revokeObjectURL(blobUrl);
-                }
+                // 延遲釋放 URL
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                }, 100);
                 
                 generateBtn.disabled = false;
-                generateBtn.innerHTML = '<span>✅</span><span>PDF 已開啟</span>';
-            } else {
-                // 非 iOS 使用標準下載
+                generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
+            } catch (error) {
+                console.error('Download error:', error);
+                // 備用方案：使用 jsPDF 內建的 save
                 pdf.save(`${filename}.pdf`);
                 generateBtn.disabled = false;
                 generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
