@@ -247,6 +247,18 @@
             font-weight: 600;
         }
 
+        .preview-item .mask-badge {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(95, 184, 120, 0.9);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
         .preview-item .controls-overlay {
             position: absolute;
             top: 10px;
@@ -385,7 +397,7 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 照片已按選擇順序排列，可使用 ↑↓ 按鈕調整
+            📋 照片已按選擇順序排列，第一張底部 10% 已自動遮蔽
         </div>
 
         <div class="controls" id="controls">
@@ -582,11 +594,11 @@
         }
 
         function processAllImages() {
-            processedImages = images.map(img => processImage(img));
+            processedImages = images.map((img, index) => processImage(img, index));
             displayPreviews();
         }
 
-        function processImage(img) {
+        function processImage(img, index) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
@@ -601,6 +613,7 @@
             const contrast = parseFloat(contrastSlider.value) / 100;
             const brightness = parseFloat(brightnessSlider.value) / 100;
             
+            // 處理黑白效果
             for (let i = 0; i < data.length; i += 4) {
                 let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
                 
@@ -614,6 +627,16 @@
             }
             
             ctx.putImageData(imageData, 0, 0);
+            
+            // 如果是第一張圖片，用白色遮蔽底部 10%
+            if (index === 0) {
+                const maskHeight = Math.floor(canvas.height * 0.1);
+                const maskY = canvas.height - maskHeight;
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, maskY, canvas.width, maskHeight);
+            }
+            
             return canvas.toDataURL('image/jpeg', 0.9);
         }
 
@@ -622,8 +645,12 @@
             processedImages.forEach((dataUrl, index) => {
                 const div = document.createElement('div');
                 div.className = 'preview-item';
+                
+                const maskBadge = index === 0 ? '<div class="mask-badge">✓ 底部已遮蔽</div>' : '';
+                
                 div.innerHTML = `
                     <div class="page-number">第 ${index + 1} 頁</div>
+                    ${maskBadge}
                     <div class="controls-overlay">
                         <button class="move-btn up" onclick="moveImage(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
                         <button class="delete-btn" onclick="deleteImage(${index})">×</button>
@@ -641,16 +668,21 @@
             if (newIndex < 0 || newIndex >= images.length) return;
             
             [images[index], images[newIndex]] = [images[newIndex], images[index]];
-            [processedImages[index], processedImages[newIndex]] = [processedImages[newIndex], processedImages[index]];
             
-            displayPreviews();
+            // 重新處理圖片（因為第一張需要遮蔽）
+            processAllImages();
             updateStats();
         }
 
         function deleteImage(index) {
             images.splice(index, 1);
             processedImages.splice(index, 1);
-            displayPreviews();
+            
+            // 重新處理所有圖片（因為第一張可能改變）
+            if (images.length > 0) {
+                processAllImages();
+            }
+            
             updateStats();
             
             if (images.length === 0) {
@@ -726,7 +758,6 @@
             let filename = filenameInput.value.trim() || detectedFilename || '掃描文件';
             filename = filename.replace(/[<>:"/\\|?*]/g, '_');
             
-            // 使用標準的下載方式，保留檔名
             try {
                 const pdfBlob = pdf.output('blob');
                 const url = URL.createObjectURL(pdfBlob);
@@ -734,12 +765,10 @@
                 link.href = url;
                 link.download = `${filename}.pdf`;
                 
-                // 觸發下載
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 
-                // 延遲釋放 URL
                 setTimeout(() => {
                     URL.revokeObjectURL(url);
                 }, 100);
@@ -748,7 +777,6 @@
                 generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
             } catch (error) {
                 console.error('Download error:', error);
-                // 備用方案：使用 jsPDF 內建的 save
                 pdf.save(`${filename}.pdf`);
                 generateBtn.disabled = false;
                 generateBtn.innerHTML = '<span>✅</span><span>完成！</span>';
