@@ -130,6 +130,24 @@
             margin-left: 10px;
         }
 
+        .mask-controls {
+            background: #3a4a5c;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: none;
+        }
+
+        .mask-controls .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #e8e8e8;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #4a5a6c;
+        }
+
         .filename-section {
             background: #3a4a5c;
             border-radius: 16px;
@@ -257,6 +275,10 @@
             border-radius: 6px;
             font-size: 11px;
             font-weight: 600;
+            max-width: 90%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .preview-item .controls-overlay {
@@ -397,7 +419,25 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 第1張底部遮蔽 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
+            📋 第1張序號與底部遮蔽 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
+        </div>
+
+        <div class="mask-controls" id="maskControls">
+            <div class="section-title">🎯 第一張圖片遮蔽調整</div>
+            <div class="control-group">
+                <label>
+                    序號欄位位置（上下）
+                    <span class="control-value" id="serialPosValue">23.5%</span>
+                </label>
+                <input type="range" id="serialPos" min="15" max="35" value="23.5" step="0.5">
+            </div>
+            <div class="control-group">
+                <label>
+                    序號欄位高度
+                    <span class="control-value" id="serialHeightValue">4%</span>
+                </label>
+                <input type="range" id="serialHeight" min="2" max="8" value="4" step="0.5">
+            </div>
         </div>
 
         <div class="controls" id="controls">
@@ -437,11 +477,13 @@
         let images = [];
         let processedImages = [];
         let detectedFilename = '';
+        let serialNumbers = [];
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
         const previewSection = document.getElementById('previewSection');
         const controls = document.getElementById('controls');
+        const maskControls = document.getElementById('maskControls');
         const filenameSection = document.getElementById('filenameSection');
         const filenameInput = document.getElementById('filenameInput');
         const generateBtn = document.getElementById('generateBtn');
@@ -449,16 +491,25 @@
         const ocrStatus = document.getElementById('ocrStatus');
         const sortHint = document.getElementById('sortHint');
         const downloadTip = document.getElementById('downloadTip');
+        
         const contrastSlider = document.getElementById('contrast');
         const brightnessSlider = document.getElementById('brightness');
         const contrastValue = document.getElementById('contrastValue');
         const brightnessValue = document.getElementById('brightnessValue');
+        
+        const serialPosSlider = document.getElementById('serialPos');
+        const serialHeightSlider = document.getElementById('serialHeight');
+        const serialPosValue = document.getElementById('serialPosValue');
+        const serialHeightValue = document.getElementById('serialHeightValue');
 
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
+        // 重要：綁定事件監聽器
         fileInput.addEventListener('change', handleFileSelect);
-        contrastSlider.addEventListener('input', updateControls);
-        brightnessSlider.addEventListener('input', updateControls);
+        contrastSlider.addEventListener('input', updateImageControls);
+        brightnessSlider.addEventListener('input', updateImageControls);
+        serialPosSlider.addEventListener('input', updateMaskControls);
+        serialHeightSlider.addEventListener('input', updateMaskControls);
         generateBtn.addEventListener('click', generatePDF);
 
         async function handleFileSelect(e) {
@@ -467,14 +518,20 @@
 
             images = [];
             processedImages = [];
+            serialNumbers = [];
             
             for (const file of files) {
                 await loadImage(file);
             }
             
+            if (images.length >= 1) {
+                await detectFirstImageSerial();
+            }
+            
             processAllImages();
             updateStats();
             controls.style.display = 'block';
+            maskControls.style.display = 'block';
             filenameSection.style.display = 'block';
             previewSection.style.display = 'block';
             sortHint.classList.add('show');
@@ -499,6 +556,61 @@
                 };
                 reader.readAsDataURL(file);
             });
+        }
+
+        async function detectFirstImageSerial() {
+            console.log('開始辨識第一張圖片的序號...');
+            
+            try {
+                const img = images[0];
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                const serialPosPercent = parseFloat(serialPosSlider.value) / 100;
+                const serialHeightPercent = parseFloat(serialHeightSlider.value) / 100;
+                
+                const cropX = Math.floor(img.width * 0.15);
+                const cropY = Math.floor(img.height * serialPosPercent);
+                const cropWidth = Math.floor(img.width * 0.7);
+                const cropHeight = Math.floor(img.height * serialHeightPercent);
+                
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                
+                ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    gray = ((gray - 128) * 2.0) + 128;
+                    gray = Math.max(0, Math.min(255, gray));
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                
+                const result = await Tesseract.recognize(canvas, 'eng', { logger: () => {} });
+                const text = result.data.text.replace(/\s/g, '');
+                
+                console.log('第一張圖片序號區域 OCR 結果:', text);
+                
+                const serialPattern = /[A-Z0-9]{10}/gi;
+                const matches = text.match(serialPattern);
+                
+                if (matches && matches.length > 0) {
+                    serialNumbers[0] = matches.join(', ');
+                    console.log('✓ 找到序號:', serialNumbers[0]);
+                } else {
+                    serialNumbers[0] = null;
+                    console.log('✗ 未找到序號');
+                }
+                
+            } catch (error) {
+                console.error('第一張圖片序號辨識失敗:', error);
+                serialNumbers[0] = null;
+            }
         }
 
         async function performOCR() {
@@ -549,7 +661,7 @@
                 );
                 
                 const text = result.data.text.replace(/\s/g, '');
-                console.log('OCR 原始結果:', text);
+                console.log('發票 OCR 原始結果:', text);
                 
                 const patterns = [
                     /[A-Z]{2}-?\d{8}/gi,
@@ -612,7 +724,6 @@
             const contrast = parseFloat(contrastSlider.value) / 100;
             const brightness = parseFloat(brightnessSlider.value) / 100;
             
-            // 處理黑白效果
             for (let i = 0; i < data.length; i += 4) {
                 let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
                 
@@ -627,28 +738,36 @@
             
             ctx.putImageData(imageData, 0, 0);
             
-            // 第一張圖片：用白色遮蔽底部 10%
             if (index === 0) {
-                const maskHeight = Math.floor(canvas.height * 0.1);
-                const maskY = canvas.height - maskHeight;
+                // 讀取滑桿的值
+                const serialPosPercent = parseFloat(serialPosSlider.value) / 100;
+                const serialHeightPercent = parseFloat(serialHeightSlider.value) / 100;
+                
+                const serialX = Math.floor(canvas.width * 0.15);
+                const serialY = Math.floor(canvas.height * serialPosPercent);
+                const serialWidth = Math.floor(canvas.width * 0.7);
+                const serialHeight = Math.floor(canvas.height * serialHeightPercent);
                 
                 ctx.fillStyle = 'white';
+                ctx.fillRect(serialX, serialY, serialWidth, serialHeight);
+                
+                const maskHeight = Math.floor(canvas.height * 0.1);
+                const maskY = canvas.height - maskHeight;
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
+                
+                console.log(`✓ 第1張已遮蔽序號欄位 (位置: ${serialPosSlider.value}%, 高度: ${serialHeightSlider.value}%)`);
             }
             
-            // 第四張圖片：用白色遮蔽序號區域（固定位置）
             if (index === 3) {
-                // 根據你的圖片，序號在中間偏下的位置
-                // 遮蔽區域：從圖片中央開始，覆蓋序號所在區域
-                const maskX = Math.floor(canvas.width * 0.15);      // 左側 15% 開始
-                const maskY = Math.floor(canvas.height * 0.42);     // 上方 42% 開始
-                const maskWidth = Math.floor(canvas.width * 0.7);   // 寬度 70%
-                const maskHeight = Math.floor(canvas.height * 0.08); // 高度 8%
+                const maskX = Math.floor(canvas.width * 0.15);
+                const maskY = Math.floor(canvas.height * 0.42);
+                const maskWidth = Math.floor(canvas.width * 0.7);
+                const maskHeight = Math.floor(canvas.height * 0.08);
                 
                 ctx.fillStyle = 'white';
                 ctx.fillRect(maskX, maskY, maskWidth, maskHeight);
                 
-                console.log(`✓ 第4張已遮蔽序號區域 (${maskX}, ${maskY}, ${maskWidth}, ${maskHeight})`);
+                console.log('✓ 第4張已遮蔽序號區域');
             }
             
             return canvas.toDataURL('image/jpeg', 0.9);
@@ -662,7 +781,8 @@
                 
                 let maskBadge = '';
                 if (index === 0) {
-                    maskBadge = '<div class="mask-badge">✓ 底部已遮蔽</div>';
+                    const serialText = serialNumbers[0] ? `: ${serialNumbers[0]}` : '';
+                    maskBadge = `<div class="mask-badge">✓ 序號與底部已遮蔽${serialText}</div>`;
                 } else if (index === 3) {
                     maskBadge = '<div class="mask-badge">✓ 序號已遮蔽</div>';
                 }
@@ -687,6 +807,7 @@
             if (newIndex < 0 || newIndex >= images.length) return;
             
             [images[index], images[newIndex]] = [images[newIndex], images[index]];
+            [serialNumbers[index], serialNumbers[newIndex]] = [serialNumbers[newIndex], serialNumbers[index]];
             
             processAllImages();
             updateStats();
@@ -695,6 +816,7 @@
         function deleteImage(index) {
             images.splice(index, 1);
             processedImages.splice(index, 1);
+            serialNumbers.splice(index, 1);
             
             if (images.length > 0) {
                 processAllImages();
@@ -705,15 +827,23 @@
             if (images.length === 0) {
                 previewSection.style.display = 'none';
                 controls.style.display = 'none';
+                maskControls.style.display = 'none';
                 filenameSection.style.display = 'none';
                 sortHint.classList.remove('show');
                 downloadTip.classList.remove('show');
             }
         }
 
-        function updateControls() {
+        function updateImageControls() {
             contrastValue.textContent = contrastSlider.value + '%';
             brightnessValue.textContent = brightnessSlider.value + '%';
+            processAllImages();
+        }
+
+        function updateMaskControls() {
+            serialPosValue.textContent = serialPosSlider.value + '%';
+            serialHeightValue.textContent = serialHeightSlider.value + '%';
+            // 重新處理所有圖片以應用新的遮蔽設定
             processAllImages();
         }
 
