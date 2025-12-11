@@ -509,7 +509,7 @@
         let serialNumbers = [];
         let serialPosValue = 23.5;
         let serialHeightValue = 2.5;
-        let machineSerialPosition = null; // 儲存「機器序號」的位置
+        let machineSerialPosition = null;
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -549,22 +549,26 @@
             }
             
             if (images.length >= 1) {
-                await detectMachineSerial();
+                // 先處理圖片和顯示預覽
                 await detectFirstImageSerial();
+                processAllImages();
+                updateStats();
+                controls.style.display = 'block';
+                filenameSection.style.display = 'block';
+                previewSection.style.display = 'block';
+                sortHint.classList.add('show');
+                
+                if (isIOS) {
+                    downloadTip.classList.add('show');
+                }
+                
+                // 然後才進行比較耗時的 OCR
+                await detectMachineSerial();
+                await performOCR();
+                
+                // 重新處理圖片以應用機器序號遮蔽
+                processAllImages();
             }
-            
-            processAllImages();
-            updateStats();
-            controls.style.display = 'block';
-            filenameSection.style.display = 'block';
-            previewSection.style.display = 'block';
-            sortHint.classList.add('show');
-            
-            if (isIOS) {
-                downloadTip.classList.add('show');
-            }
-            
-            await performOCR();
         }
 
         function loadImage(file) {
@@ -590,11 +594,14 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 掃描左側區域（機器序號通常在左邊）
-                canvas.width = img.width;
-                canvas.height = img.height;
+                // 只掃描左側 40% 區域（機器序號通常在左邊）
+                const scanWidth = Math.floor(img.width * 0.4);
+                const scanHeight = Math.floor(img.height * 0.5);
                 
-                ctx.drawImage(img, 0, 0);
+                canvas.width = scanWidth;
+                canvas.height = scanHeight;
+                
+                ctx.drawImage(img, 0, 0, scanWidth, scanHeight, 0, 0, scanWidth, scanHeight);
                 
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
@@ -613,14 +620,14 @@
                     logger: () => {} 
                 });
                 
-                console.log('第一張圖片完整 OCR 結果:', result.data.text);
+                console.log('第一張圖片 OCR 結果:', result.data.text);
                 
                 // 尋找「機器序號」的位置
-                const lines = result.data.lines;
-                for (const line of lines) {
-                    const text = line.text;
+                const words = result.data.words;
+                for (const word of words) {
+                    const text = word.text;
                     if (text.includes('機器序號') || text.includes('机器序号') || text.includes('機器序號')) {
-                        const bbox = line.bbox;
+                        const bbox = word.bbox;
                         machineSerialPosition = {
                             x: bbox.x0,
                             y: bbox.y0,
@@ -825,8 +832,8 @@
                 if (machineSerialPosition) {
                     const maskX = Math.max(0, machineSerialPosition.x - 10);
                     const maskY = Math.max(0, machineSerialPosition.y - 5);
-                    const maskWidth = Math.min(canvas.width - maskX, machineSerialPosition.width + 20);
-                    const maskHeight = machineSerialPosition.height + 10;
+                    const maskWidth = Math.min(canvas.width - maskX, machineSerialPosition.width + 200);
+                    const maskHeight = machineSerialPosition.height + 30;
                     
                     ctx.fillRect(maskX, maskY, maskWidth, maskHeight);
                     console.log('✓ 已遮蔽「機器序號」文字區域');
