@@ -466,7 +466,7 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 第1張序號與底部遮蔽 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
+            📋 第1張序號與底部遮蔽 / 第2張自動辨識發票號碼 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
         </div>
 
         <div class="controls" id="controls">
@@ -632,138 +632,76 @@
         }
 
         async function performOCR() {
-            if (images.length === 0) return;
+            if (images.length < 2) {
+                // 如果少於2張圖片，使用預設名稱
+                const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                detectedFilename = `掃描文件_${timestamp}`;
+                filenameInput.value = detectedFilename;
+                ocrStatus.className = 'ocr-status error';
+                ocrStatus.innerHTML = '⚠️ 需要至少2張圖片才能辨識發票號碼';
+                return;
+            }
             
             ocrStatus.className = 'ocr-status loading';
-            ocrStatus.innerHTML = '🔍 正在辨識發票號碼...';
+            ocrStatus.innerHTML = '🔍 正在辨識第2張圖片的發票號碼...';
             filenameInput.value = '';
             
             try {
-                // 嘗試掃描所有圖片，尋找電子發票證明聯的發票號碼
-                let foundInvoice = false;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = images[1]; // 第二張圖片（索引為1）
                 
-                for (let imgIndex = 0; imgIndex < images.length; imgIndex++) {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const img = images[imgIndex];
-                    
-                    // 掃描上半部區域（電子發票證明聯的發票號碼通常在上方）
-                    const cropWidth = Math.floor(img.width * 0.6);
-                    const cropHeight = Math.floor(img.height * 0.4);
-                    const cropX = Math.floor(img.width * 0.2);
-                    const cropY = 0;
-                    
-                    canvas.width = cropWidth;
-                    canvas.height = cropHeight;
-                    
-                    ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-                    
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageData.data;
-                    
-                    for (let i = 0; i < data.length; i += 4) {
-                        let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                        gray = ((gray - 128) * 2.0) + 128;
-                        gray = Math.max(0, Math.min(255, gray));
-                        data[i] = data[i + 1] = data[i + 2] = gray;
-                    }
-                    
-                    ctx.putImageData(imageData, 0, 0);
-                    
-                    const result = await Tesseract.recognize(
-                        canvas,
-                        'eng',
-                        {
-                            logger: m => {
-                                if (m.status === 'recognizing text') {
-                                    const progress = Math.round(m.progress * 100);
-                                    ocrStatus.innerHTML = `🔍 辨識第 ${imgIndex + 1} 張... ${progress}%`;
-                                }
+                // 掃描上半部區域（電子發票證明聯的發票號碼通常在上方）
+                const cropWidth = Math.floor(img.width * 0.6);
+                const cropHeight = Math.floor(img.height * 0.4);
+                const cropX = Math.floor(img.width * 0.2);
+                const cropY = 0;
+                
+                canvas.width = cropWidth;
+                canvas.height = cropHeight;
+                
+                ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                // 增強對比度以提升辨識率
+                for (let i = 0; i < data.length; i += 4) {
+                    let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    gray = ((gray - 128) * 2.0) + 128;
+                    gray = Math.max(0, Math.min(255, gray));
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                
+                const result = await Tesseract.recognize(
+                    canvas,
+                    'eng',
+                    {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                const progress = Math.round(m.progress * 100);
+                                ocrStatus.innerHTML = `🔍 辨識第2張... ${progress}%`;
                             }
                         }
-                    );
-                    
-                    const text = result.data.text.replace(/\s/g, '');
-                    console.log(`圖片 ${imgIndex + 1} OCR 原始結果:`, text);
-                    
-                    // 尋找 XX-NNNNNNNN 格式（例如：UC-84181949）
-                    const electronicPattern = /[A-Z]{2}-\d{8}/gi;
-                    const electronicMatches = text.match(electronicPattern);
-                    
-                    if (electronicMatches && electronicMatches.length > 0) {
-                        detectedFilename = electronicMatches[0];
-                        filenameInput.value = detectedFilename;
-                        ocrStatus.className = 'ocr-status success';
-                        ocrStatus.innerHTML = `✅ 已辨識發票號碼: ${detectedFilename} (圖片 ${imgIndex + 1})`;
-                        foundInvoice = true;
-                        console.log('✓ 找到電子發票號碼:', detectedFilename);
-                        break;
                     }
-                }
+                );
                 
-                // 如果沒找到電子發票格式，嘗試傳統發票格式（第一張圖片右上角）
-                if (!foundInvoice) {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const img = images[0];
-                    
-                    const cropWidth = Math.floor(img.width * 0.4);
-                    const cropHeight = Math.floor(img.height * 0.15);
-                    const cropX = img.width - cropWidth;
-                    const cropY = 0;
-                    
-                    canvas.width = cropWidth;
-                    canvas.height = cropHeight;
-                    
-                    ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-                    
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageData.data;
-                    
-                    for (let i = 0; i < data.length; i += 4) {
-                        let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                        gray = ((gray - 128) * 1.5) + 128;
-                        gray = Math.max(0, Math.min(255, gray));
-                        data[i] = data[i + 1] = data[i + 2] = gray;
-                    }
-                    
-                    ctx.putImageData(imageData, 0, 0);
-                    
-                    const result = await Tesseract.recognize(canvas, 'eng', { logger: () => {} });
-                    const text = result.data.text.replace(/\s/g, '');
-                    console.log('傳統發票 OCR 原始結果:', text);
-                    
-                    const patterns = [
-                        /[A-Z]{2}-?\d{8}/gi,
-                        /[A-Z0]{2}-?\d{8}/gi,
-                        /[A-Z]{1}[A-Z0]{1}-?\d{8}/gi
-                    ];
-                    
-                    let matches = null;
-                    for (const pattern of patterns) {
-                        matches = text.match(pattern);
-                        if (matches && matches.length > 0) break;
-                    }
-                    
-                    if (matches && matches.length > 0) {
-                        let invoiceNum = matches[0].replace(/-/g, '');
-                        invoiceNum = invoiceNum.replace(/0([A-Z])/g, 'O$1');
-                        invoiceNum = invoiceNum.replace(/([A-Z])0/g, '$1O');
-                        
-                        if (invoiceNum.length >= 10) {
-                            const prefix = invoiceNum.substring(0, 2).toUpperCase();
-                            const numbers = invoiceNum.substring(2, 10);
-                            detectedFilename = `${prefix}-${numbers}`;
-                            
-                            filenameInput.value = detectedFilename;
-                            ocrStatus.className = 'ocr-status success';
-                            ocrStatus.innerHTML = `✅ 已辨識發票號碼: ${detectedFilename}`;
-                            foundInvoice = true;
-                        }
-                    }
-                }
+                const text = result.data.text.replace(/\s/g, '');
+                console.log('第2張圖片 OCR 原始結果:', text);
                 
-                if (!foundInvoice) {
+                // 尋找 XX-NNNNNNNN 格式（例如：UC-84181949）
+                const electronicPattern = /[A-Z]{2}-\d{8}/gi;
+                const electronicMatches = text.match(electronicPattern);
+                
+                if (electronicMatches && electronicMatches.length > 0) {
+                    detectedFilename = electronicMatches[0];
+                    filenameInput.value = detectedFilename;
+                    ocrStatus.className = 'ocr-status success';
+                    ocrStatus.innerHTML = `✅ 已辨識發票號碼: ${detectedFilename}`;
+                    console.log('✓ 找到電子發票號碼:', detectedFilename);
+                } else {
                     throw new Error('未找到發票號碼');
                 }
             } catch (error) {
@@ -772,7 +710,7 @@
                 detectedFilename = `掃描文件_${timestamp}`;
                 filenameInput.value = detectedFilename;
                 ocrStatus.className = 'ocr-status error';
-                ocrStatus.innerHTML = '⚠️ 未找到發票號碼，請手動輸入或使用預設名稱';
+                ocrStatus.innerHTML = '⚠️ 第2張未找到發票號碼，請手動輸入或使用預設名稱';
             }
         }
 
