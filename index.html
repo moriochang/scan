@@ -466,7 +466,7 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 第1張序號與底部遮蔽 / 第2張自動辨識發票號碼 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
+            📋 第1張機器序號與底部遮蔽(20%) / 第2張自動辨識發票號碼 / 第4張序號遮蔽 - 可使用 ↑↓ 調整順序
         </div>
 
         <div class="controls" id="controls">
@@ -509,6 +509,7 @@
         let serialNumbers = [];
         let serialPosValue = 23.5;
         let serialHeightValue = 2.5;
+        let machineSerialPosition = null; // 儲存「機器序號」的位置
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -541,12 +542,14 @@
             images = [];
             processedImages = [];
             serialNumbers = [];
+            machineSerialPosition = null;
             
             for (const file of files) {
                 await loadImage(file);
             }
             
             if (images.length >= 1) {
+                await detectMachineSerial();
                 await detectFirstImageSerial();
             }
             
@@ -577,6 +580,66 @@
                 };
                 reader.readAsDataURL(file);
             });
+        }
+
+        async function detectMachineSerial() {
+            console.log('開始辨識第一張圖片的「機器序號」文字位置...');
+            
+            try {
+                const img = images[0];
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 掃描左側區域（機器序號通常在左邊）
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                ctx.drawImage(img, 0, 0);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                // 增強對比度
+                for (let i = 0; i < data.length; i += 4) {
+                    let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    gray = ((gray - 128) * 2.5) + 128;
+                    gray = Math.max(0, Math.min(255, gray));
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+                
+                const result = await Tesseract.recognize(canvas, 'chi_tra+eng', { 
+                    logger: () => {} 
+                });
+                
+                console.log('第一張圖片完整 OCR 結果:', result.data.text);
+                
+                // 尋找「機器序號」的位置
+                const lines = result.data.lines;
+                for (const line of lines) {
+                    const text = line.text;
+                    if (text.includes('機器序號') || text.includes('机器序号') || text.includes('機器序號')) {
+                        const bbox = line.bbox;
+                        machineSerialPosition = {
+                            x: bbox.x0,
+                            y: bbox.y0,
+                            width: bbox.x1 - bbox.x0,
+                            height: bbox.y1 - bbox.y0
+                        };
+                        console.log('✓ 找到「機器序號」文字位置:', machineSerialPosition);
+                        break;
+                    }
+                }
+                
+                if (!machineSerialPosition) {
+                    console.log('✗ 未找到「機器序號」文字');
+                }
+                
+            } catch (error) {
+                console.error('機器序號文字辨識失敗:', error);
+                machineSerialPosition = null;
+            }
         }
 
         async function detectFirstImageSerial() {
@@ -633,7 +696,6 @@
 
         async function performOCR() {
             if (images.length < 2) {
-                // 如果少於2張圖片，使用預設名稱
                 const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
                 detectedFilename = `掃描文件_${timestamp}`;
                 filenameInput.value = detectedFilename;
@@ -649,9 +711,8 @@
             try {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                const img = images[1]; // 第二張圖片（索引為1）
+                const img = images[1];
                 
-                // 掃描完整圖片，不設定區域限制
                 canvas.width = img.width;
                 canvas.height = img.height;
                 
@@ -660,7 +721,6 @@
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
                 
-                // 增強對比度以提升辨識率
                 for (let i = 0; i < data.length; i += 4) {
                     let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
                     gray = ((gray - 128) * 2.5) + 128;
@@ -685,14 +745,11 @@
                 
                 const text = result.data.text;
                 console.log('第2張圖片 OCR 完整結果:', text);
-                console.log('去除空白後:', text.replace(/\s/g, ''));
                 
-                // 尋找 XX-NNNNNNNN 格式（例如：UC-84181949）
-                // 同時支援有連字號和沒有連字號的情況
                 const patterns = [
-                    /[A-Z]{2}-\d{8}/gi,           // UC-84181949
-                    /[A-Z]{2}\d{8}/gi,            // UC84181949
-                    /[A-Z]{2}\s*-?\s*\d{8}/gi     // UC - 84181949 或 UC 84181949
+                    /[A-Z]{2}-\d{8}/gi,
+                    /[A-Z]{2}\d{8}/gi,
+                    /[A-Z]{2}\s*-?\s*\d{8}/gi
                 ];
                 
                 let foundMatch = null;
@@ -700,8 +757,7 @@
                 for (const pattern of patterns) {
                     const matches = text.match(pattern);
                     if (matches && matches.length > 0) {
-                        foundMatch = matches[0].replace(/\s/g, ''); // 移除空白
-                        // 確保格式為 XX-NNNNNNNN
+                        foundMatch = matches[0].replace(/\s/g, '');
                         if (!foundMatch.includes('-') && foundMatch.length === 10) {
                             foundMatch = foundMatch.substring(0, 2) + '-' + foundMatch.substring(2);
                         }
@@ -763,6 +819,20 @@
             ctx.putImageData(imageData, 0, 0);
             
             if (index === 0) {
+                ctx.fillStyle = 'white';
+                
+                // 遮蔽「機器序號」文字區域（如果找到）
+                if (machineSerialPosition) {
+                    const maskX = Math.max(0, machineSerialPosition.x - 10);
+                    const maskY = Math.max(0, machineSerialPosition.y - 5);
+                    const maskWidth = Math.min(canvas.width - maskX, machineSerialPosition.width + 20);
+                    const maskHeight = machineSerialPosition.height + 10;
+                    
+                    ctx.fillRect(maskX, maskY, maskWidth, maskHeight);
+                    console.log('✓ 已遮蔽「機器序號」文字區域');
+                }
+                
+                // 遮蔽序號欄位
                 const serialPosPercent = serialPosValue / 100;
                 const serialHeightPercent = serialHeightValue / 100;
                 
@@ -771,14 +841,14 @@
                 const serialWidth = Math.floor(canvas.width * 0.7);
                 const serialHeight = Math.floor(canvas.height * serialHeightPercent);
                 
-                ctx.fillStyle = 'white';
                 ctx.fillRect(serialX, serialY, serialWidth, serialHeight);
                 
-                const maskHeight = Math.floor(canvas.height * 0.1);
+                // 遮蔽底部 20%
+                const maskHeight = Math.floor(canvas.height * 0.2);
                 const maskY = canvas.height - maskHeight;
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
                 
-                console.log(`✓ 第1張已遮蔽序號欄位 (位置: ${serialPosValue}%, 高度: ${serialHeightValue}%)`);
+                console.log(`✓ 第1張已遮蔽序號欄位與底部20%`);
             }
             
             if (index === 3) {
@@ -805,7 +875,8 @@
                 let maskBadge = '';
                 if (index === 0) {
                     const serialText = serialNumbers[0] ? `: ${serialNumbers[0]}` : '';
-                    maskBadge = `<div class="mask-badge">✓ 序號與底部已遮蔽${serialText}</div>`;
+                    const machineText = machineSerialPosition ? ' + 機器序號' : '';
+                    maskBadge = `<div class="mask-badge">✓ 序號${machineText}與底部20%已遮蔽${serialText}</div>`;
                 } else if (index === 3) {
                     maskBadge = '<div class="mask-badge">✓ 序號已遮蔽</div>';
                 }
