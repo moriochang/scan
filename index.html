@@ -320,32 +320,32 @@
             cursor: not-allowed;
         }
 
-        .first-image-mask-controls {
+        .image-mask-controls {
             background: #2c3844;
             border-radius: 0 0 12px 12px;
             padding: 16px;
             margin-top: 0;
         }
 
-        .first-image-mask-controls .control-group {
+        .image-mask-controls .control-group {
             margin-bottom: 12px;
         }
 
-        .first-image-mask-controls .control-group:last-child {
+        .image-mask-controls .control-group:last-child {
             margin-bottom: 0;
         }
 
-        .first-image-mask-controls .control-group label {
+        .image-mask-controls .control-group label {
             font-size: 13px;
             color: #d0d0d0;
         }
 
-        .first-image-mask-controls .control-value {
+        .image-mask-controls .control-value {
             font-size: 12px;
             padding: 2px 8px;
         }
 
-        .first-image-mask-controls input[type="range"] {
+        .image-mask-controls input[type="range"] {
             width: 100%;
             height: 6px;
             border-radius: 3px;
@@ -355,7 +355,7 @@
             touch-action: none;
         }
 
-        .first-image-mask-controls input[type="range"]::-webkit-slider-thumb {
+        .image-mask-controls input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
             width: 24px;
@@ -366,7 +366,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
 
-        .first-image-mask-controls input[type="range"]::-moz-range-thumb {
+        .image-mask-controls input[type="range"]::-moz-range-thumb {
             width: 24px;
             height: 24px;
             border-radius: 50%;
@@ -466,7 +466,7 @@
         </div>
 
         <div class="sort-hint" id="sortHint">
-            📋 第1張機器序號與底部遮蔽(20%) / 第2張自動辨識發票號碼 / 第4張設備信息遮蔽 - 可使用 ↑↓ 調整順序
+            📋 第1張機器序號與底部遮蔽(20%) / 第2張自動辨識發票號碼 / 第4張設備信息遮蔽（可調整） - 可使用 ↑↓ 調整順序
         </div>
 
         <div class="controls" id="controls">
@@ -507,9 +507,17 @@
         let processedImages = [];
         let detectedFilename = '';
         let serialNumbers = [];
+        
+        // 第1張圖片遮蔽參數
         let serialPosValue = 23.5;
         let serialHeightValue = 2.5;
         let machineSerialPosition = null;
+        
+        // 第4張圖片遮蔽參數
+        let deviceMaskX = 1;      // X位置 (%)
+        let deviceMaskY = 22;     // Y位置 (%)
+        let deviceMaskWidth = 48;  // 寬度 (%)
+        let deviceMaskHeight = 38; // 高度 (%)
 
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -819,6 +827,7 @@
             
             ctx.putImageData(imageData, 0, 0);
             
+            // 第1張圖片遮蔽
             if (index === 0) {
                 ctx.fillStyle = 'white';
                 
@@ -829,7 +838,6 @@
                     const maskHeight = machineSerialPosition.height + 30;
                     
                     ctx.fillRect(maskX, maskY, maskWidth, maskHeight);
-                    console.log('✓ 已遮蔽「機器序號」文字區域');
                 }
                 
                 const serialPosPercent = serialPosValue / 100;
@@ -845,22 +853,18 @@
                 const maskHeight = Math.floor(canvas.height * 0.2);
                 const maskY = canvas.height - maskHeight;
                 ctx.fillRect(0, maskY, canvas.width, maskHeight);
-                
-                console.log(`✓ 第1張已遮蔽序號欄位與底部20%`);
             }
             
-            // 第4張：固定位置白色遮蔽圖塊
+            // 第4張圖片遮蔽（可調整）
             if (index === 3) {
                 ctx.fillStyle = 'white';
                 
-                // 固定遮蔽位置（根據範例圖片）
-                const maskX = Math.floor(canvas.width * 0.01);      // 左邊 1%
-                const maskY = Math.floor(canvas.height * 0.22);     // 上方 22%
-                const maskWidth = Math.floor(canvas.width * 0.48);  // 寬度 48%
-                const maskHeight = Math.floor(canvas.height * 0.38); // 高度 38%
+                const maskX = Math.floor(canvas.width * (deviceMaskX / 100));
+                const maskY = Math.floor(canvas.height * (deviceMaskY / 100));
+                const maskWidth = Math.floor(canvas.width * (deviceMaskWidth / 100));
+                const maskHeight = Math.floor(canvas.height * (deviceMaskHeight / 100));
                 
                 ctx.fillRect(maskX, maskY, maskWidth, maskHeight);
-                console.log('✓ 第4張已遮蔽固定區域（X: 1%, Y: 22%, W: 48%, H: 38%）');
             }
             
             return canvas.toDataURL('image/jpeg', 0.9);
@@ -878,7 +882,7 @@
                     const machineText = machineSerialPosition ? ' + 機器序號' : '';
                     maskBadge = `<div class="mask-badge">✓ 序號${machineText}與底部20%已遮蔽${serialText}</div>`;
                 } else if (index === 3) {
-                    maskBadge = `<div class="mask-badge">✓ 設備信息已遮蔽（固定位置）</div>`;
+                    maskBadge = `<div class="mask-badge">✓ 設備信息已遮蔽（X:${deviceMaskX}% Y:${deviceMaskY}%）</div>`;
                 }
                 
                 div.innerHTML = `
@@ -894,10 +898,10 @@
                     </div>
                 `;
                 
+                // 第1張圖片控制項
                 if (index === 0) {
                     const maskControls = document.createElement('div');
-                    maskControls.className = 'first-image-mask-controls';
-                    maskControls.id = 'maskControls';
+                    maskControls.className = 'image-mask-controls';
                     maskControls.innerHTML = `
                         <div class="control-group">
                             <label>
@@ -917,9 +921,47 @@
                     div.appendChild(maskControls);
                 }
                 
+                // 第4張圖片控制項
+                if (index === 3) {
+                    const maskControls = document.createElement('div');
+                    maskControls.className = 'image-mask-controls';
+                    maskControls.innerHTML = `
+                        <div class="control-group">
+                            <label>
+                                遮蔽圖塊 X 位置（左右）
+                                <span class="control-value" id="deviceMaskXDisplay">${deviceMaskX}%</span>
+                            </label>
+                            <input type="range" id="deviceMaskXSlider" min="0" max="50" value="${deviceMaskX}" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                遮蔽圖塊 Y 位置（上下）
+                                <span class="control-value" id="deviceMaskYDisplay">${deviceMaskY}%</span>
+                            </label>
+                            <input type="range" id="deviceMaskYSlider" min="0" max="60" value="${deviceMaskY}" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                遮蔽圖塊寬度
+                                <span class="control-value" id="deviceMaskWidthDisplay">${deviceMaskWidth}%</span>
+                            </label>
+                            <input type="range" id="deviceMaskWidthSlider" min="20" max="80" value="${deviceMaskWidth}" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                遮蔽圖塊高度
+                                <span class="control-value" id="deviceMaskHeightDisplay">${deviceMaskHeight}%</span>
+                            </label>
+                            <input type="range" id="deviceMaskHeightSlider" min="10" max="60" value="${deviceMaskHeight}" step="1">
+                        </div>
+                    `;
+                    div.appendChild(maskControls);
+                }
+                
                 previewGrid.appendChild(div);
             });
             
+            // 綁定第1張圖片的控制項事件
             const serialPosSlider = document.getElementById('serialPosSlider');
             const serialHeightSlider = document.getElementById('serialHeightSlider');
             const serialPosValueDisplay = document.getElementById('serialPosValueDisplay');
@@ -940,6 +982,57 @@
                     serialHeightValue = parseFloat(e.target.value);
                     if (serialHeightValueDisplay) {
                         serialHeightValueDisplay.textContent = serialHeightValue + '%';
+                    }
+                    processAllImages();
+                });
+            }
+            
+            // 綁定第4張圖片的控制項事件
+            const deviceMaskXSlider = document.getElementById('deviceMaskXSlider');
+            const deviceMaskYSlider = document.getElementById('deviceMaskYSlider');
+            const deviceMaskWidthSlider = document.getElementById('deviceMaskWidthSlider');
+            const deviceMaskHeightSlider = document.getElementById('deviceMaskHeightSlider');
+            
+            const deviceMaskXDisplay = document.getElementById('deviceMaskXDisplay');
+            const deviceMaskYDisplay = document.getElementById('deviceMaskYDisplay');
+            const deviceMaskWidthDisplay = document.getElementById('deviceMaskWidthDisplay');
+            const deviceMaskHeightDisplay = document.getElementById('deviceMaskHeightDisplay');
+            
+            if (deviceMaskXSlider) {
+                deviceMaskXSlider.addEventListener('input', (e) => {
+                    deviceMaskX = parseFloat(e.target.value);
+                    if (deviceMaskXDisplay) {
+                        deviceMaskXDisplay.textContent = deviceMaskX + '%';
+                    }
+                    processAllImages();
+                });
+            }
+            
+            if (deviceMaskYSlider) {
+                deviceMaskYSlider.addEventListener('input', (e) => {
+                    deviceMaskY = parseFloat(e.target.value);
+                    if (deviceMaskYDisplay) {
+                        deviceMaskYDisplay.textContent = deviceMaskY + '%';
+                    }
+                    processAllImages();
+                });
+            }
+            
+            if (deviceMaskWidthSlider) {
+                deviceMaskWidthSlider.addEventListener('input', (e) => {
+                    deviceMaskWidth = parseFloat(e.target.value);
+                    if (deviceMaskWidthDisplay) {
+                        deviceMaskWidthDisplay.textContent = deviceMaskWidth + '%';
+                    }
+                    processAllImages();
+                });
+            }
+            
+            if (deviceMaskHeightSlider) {
+                deviceMaskHeightSlider.addEventListener('input', (e) => {
+                    deviceMaskHeight = parseFloat(e.target.value);
+                    if (deviceMaskHeightDisplay) {
+                        deviceMaskHeightDisplay.textContent = deviceMaskHeight + '%';
                     }
                     processAllImages();
                 });
